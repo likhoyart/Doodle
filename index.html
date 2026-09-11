@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<title>Sky Hop</title>
+<style>
+:root {
+  --bg:#000;
+  --ink:#f4f4f4;
+  --soft:#b8b8c2;
+  --panel:rgba(14,14,18,.58);
+  --line:rgba(255,255,255,.12);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#000;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{touch-action:none}
+#wrap{position:fixed;inset:0;display:grid;place-items:center}
+canvas{display:block;width:100vw;height:100vh;background:#000}
+.hud{position:fixed;inset:0;pointer-events:none;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;justify-content:space-between}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.leftCol,.rightCol{display:flex;flex-direction:column;gap:10px}
+.brand,.scorebox,.hint,.overlay-card,.gyro-box{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 10px 30px rgba(0,0,0,.22)}
+.brand{padding:10px 14px;border-radius:18px;font-weight:800;letter-spacing:-.03em}
+.scorebox{padding:10px 14px;border-radius:18px;text-align:right;min-width:122px}
+.score{font-size:28px;line-height:1;font-weight:900;letter-spacing:-.05em}
+.meta{font-size:11px;color:var(--soft);margin-top:4px;text-transform:uppercase;letter-spacing:.12em}
+.hint{align-self:center;padding:10px 14px;border-radius:999px;font-size:12px;color:#d2d5df;margin-bottom:2px}
+.gyro-box{pointer-events:auto;padding:10px 12px;border-radius:16px;font-size:12px;color:#d2d5df;display:flex;flex-direction:column;gap:8px}
+.small{font-size:11px;color:#aeb3c1;line-height:1.35}
+.btn{border:0;border-radius:12px;padding:10px 12px;background:#f4f4f4;color:#0f1014;font-weight:800;cursor:pointer}
+.center{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none}
+.overlay-card{pointer-events:auto;width:min(90vw,360px);padding:24px;border-radius:28px;text-align:center;opacity:0;transform:translateY(12px) scale(.98);transition:.2s ease;visibility:hidden}
+.overlay-card.show{opacity:1;transform:none;visibility:visible}
+h1{font-size:34px;margin:0 0 8px;letter-spacing:-.055em}
+p{color:#b4b8c5;margin:0 0 18px;line-height:1.45;font-size:14px}
+button.main{border:0;border-radius:18px;padding:14px 18px;width:100%;font-weight:800;font-size:15px;background:#f4f4f4;color:#090a0d;cursor:pointer}
+button:active{transform:scale(.98)}
+.touch-controls{position:fixed;inset:auto 0 max(18px,env(safe-area-inset-bottom));display:flex;justify-content:space-between;padding:0 22px;pointer-events:none}
+.touch{pointer-events:auto;width:78px;height:78px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:grid;place-items:center;font-size:28px;font-weight:800;color:#f2f2f2;user-select:none;-webkit-user-select:none}
+@media (hover:hover) and (pointer:fine){.touch-controls{display:none}}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
+
+<div class="hud">
+  <div class="top">
+    <div class="leftCol">
+      <div class="brand">SKY HOP</div>
+      <div class="gyro-box">
+        <div><b>Gyroscope</b>: <span id="gyroState">off</span></div>
+        <button class="btn" id="gyroBtn">Enable motion</button>
+        <div class="small">On iPhone, tap once to allow motion control.</div>
+      </div>
+    </div>
+    <div class="rightCol">
+      <div class="scorebox">
+        <div class="score" id="score">0</div>
+        <div class="meta">Best <span id="best">0</span></div>
+        <div class="meta">Coins <span id="coins">0</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="hint">← → / A D · touch · gyroscope</div>
+</div>
+
+<div class="center">
+  <div class="overlay-card" id="gameOver">
+    <h1>Game over</h1>
+    <p>You climbed <b><span id="finalScore">0</span></b> points and collected <b><span id="finalCoins">0</span></b> coins.</p>
+    <button class="main" id="restart">Play again</button>
+  </div>
+</div>
+
+<div class="touch-controls">
+  <div class="touch" id="left">←</div>
+  <div class="touch" id="right">→</div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const coinsEl = document.getElementById('coins');
+  const gameOverEl = document.getElementById('gameOver');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalCoinsEl = document.getElementById('finalCoins');
+  const restartBtn = document.getElementById('restart');
+  const gyroBtn = document.getElementById('gyroBtn');
+  const gyroState = document.getElementById('gyroState');
+
+  const playerImage = new Image();
+  playerImage.src = 'data:image/png;base64,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';
+
+  let W=0,H=0,DPR=1,last=0,running=true;
+  const keys={left:false,right:false};
+  const touch={left:false,right:false};
+  const gyro={enabled:false,tilt:0,supported:false};
+
+  const state={
+    score:0,
+    best:+(localStorage.getItem('skyhop-best')||0),
+    coins:0,
+    bestCoins:+(localStorage.getItem('skyhop-coins')||0),
+    speedScale:1,
+    worldOffset:0
+  };
+
+  const player={
+    x:0,y:0,w:44,h:58,vx:0,vy:0,
+    accel:2200,maxSpeed:340,friction:0.84,jump:850,squash:0
+  };
+
+  let platforms=[], particles=[], stars=[];
+
+  function rand(a,b){return a+Math.random()*(b-a)}
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+
+  function resize(){
+    DPR=Math.min(window.devicePixelRatio||1,2);
+    W=window.innerWidth; H=window.innerHeight;
+    canvas.width=Math.floor(W*DPR); canvas.height=Math.floor(H*DPR);
+    canvas.style.width=W+'px'; canvas.style.height=H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    createStars();
+  }
+
+  function createStars(){
+    stars=[];
+    const count=Math.round((W*H)/6500);
+    for(let i=0;i<count;i++){
+      stars.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.7+0.4,a:Math.random()*0.7+0.2,speed:Math.random()*0.28+0.12});
+    }
+  }
+
+  function reset(){
+    state.score=0; state.coins=0; state.speedScale=1; state.worldOffset=0;
+    running=true;
+    gameOverEl.classList.remove('show');
+    platforms=[]; particles=[];
+    player.x=W/2-player.w/2; player.y=H*0.68; player.vx=0; player.vy=-player.jump;
+    const start={x:W/2-62,y:H*0.82,w:124,h:14,type:'solid',coin:false,collected:false};
+    platforms.push(start);
+    let prev=start;
+    let y=start.y;
+    for(let i=0;i<16;i++){
+      y-=rand(68,102);
+      const next=makeReachablePlatform(prev,y,i);
+      platforms.push(next);
+      prev=next;
+    }
+    updateHud();
+  }
+
+  function makeReachablePlatform(prev,y,i=0){
+    const w=rand(82,126);
+    const maxDx=110;
+    const desiredX=prev.x+prev.w/2-w/2+rand(-maxDx,maxDx);
+    const x=clamp(desiredX,10,W-w-10);
+    const moving=i>6&&Math.random()<0.16;
+    return {
+      x,y,w,h:12,
+      type:moving?'moving':'solid',
+      dir:Math.random()<.5?-1:1,
+      speed:rand(26,48),
+      coin:Math.random()<0.33,
+      collected:false
+    };
+  }
+
+  function spawnReachableAbove(){
+    let highest=platforms.reduce((m,p)=>Math.min(m,p.y),Infinity);
+    while(highest>-160){
+      const highestPlatform=platforms.slice().sort((a,b)=>a.y-b.y)[0];
+      highest-=rand(68,100);
+      platforms.push(makeReachablePlatform(highestPlatform,highest,platforms.length));
+      highest=platforms.reduce((m,p)=>Math.min(m,p.y),Infinity);
+    }
+  }
+
+  function controlDir(){
+    let dir=0;
+    if(keys.left||touch.left) dir-=1;
+    if(keys.right||touch.right) dir+=1;
+    if(gyro.enabled&&Math.abs(gyro.tilt)>1.5) dir+=clamp(gyro.tilt/16,-1,1);
+    return clamp(dir,-1,1);
+  }
+
+  function update(dt){
+    if(!running) return;
+    const dir=controlDir();
+    if(Math.abs(dir)>0.01){
+      player.vx+=dir*player.accel*dt;
+      player.vx=clamp(player.vx,-player.maxSpeed,player.maxSpeed);
+    } else {
+      player.vx*=Math.pow(player.friction,dt*60);
+    }
+
+    const prevY=player.y;
+    player.vy+=2050*dt;
+    player.y+=player.vy*dt;
+    player.x+=player.vx*dt;
+
+    if(player.x>W) player.x=-player.w;
+    if(player.x+player.w<0) player.x=W;
+
+    for(const p of platforms){
+      if(p.type==='moving'){
+        p.x+=p.dir*p.speed*dt;
+        if(p.x<8){p.x=8;p.dir=1}
+        if(p.x+p.w>W-8){p.x=W-8-p.w;p.dir=-1}
+      }
+    }
+
+    if(player.vy>0){
+      const prevBottom=prevY+player.h;
+      const bottom=player.y+player.h;
+      for(const p of platforms){
+        if(prevBottom<=p.y+5 && bottom>=p.y && player.x+player.w>p.x+4 && player.x<p.x+p.w-4){
+          player.y=p.y-player.h;
+          player.vy=-player.jump*(1+Math.min(.12,state.score/4500));
+          player.squash=1;
+          burst(player.x+player.w/2,p.y,false);
+          break;
+        }
+      }
+    }
+
+    const px=player.x+player.w/2;
+    const py=player.y+player.h/2;
+    for(const p of platforms){
+      if(p.coin&&!p.collected){
+        const cx=p.x+p.w/2, cy=p.y-14;
+        const dx=px-cx, dy=py-cy;
+        if(dx*dx+dy*dy<24*24){
+          p.collected=true;
+          state.coins+=1;
+          state.score+=25;
+          burst(cx,cy,true);
+        }
+      }
+    }
+
+    const threshold=H*0.42;
+    if(player.y<threshold && player.vy<0){
+      const dy=threshold-player.y;
+      player.y=threshold;
+      for(const p of platforms) p.y+=dy;
+      for(const q of particles) q.y+=dy;
+      state.score+=Math.floor(dy);
+      state.worldOffset+=dy;
+      state.speedScale=1+Math.min(.28,state.score/8000);
+    }
+
+    spawnReachableAbove();
+    platforms=platforms.filter(p=>p.y<H+90);
+
+    for(const q of particles){
+      q.x+=q.vx*dt; q.y+=q.vy*dt; q.vy+=650*dt; q.life-=dt;
+    }
+    particles=particles.filter(q=>q.life>0);
+
+    player.squash=Math.max(0,player.squash-dt*6);
+
+    if(player.y>H+90) endGame();
+    updateHud();
+  }
+
+  function burst(x,y,coin=false){
+    const count=coin?14:8;
+    for(let i=0;i<count;i++){
+      particles.push({x,y,vx:rand(-100,100),vy:rand(-160,-40),life:rand(.26,.58),r:coin?rand(1.8,4.6):rand(1.6,3.2),coin});
+    }
+  }
+
+  function endGame(){
+    running=false;
+    state.best=Math.max(state.best,state.score);
+    state.bestCoins=Math.max(state.bestCoins,state.coins);
+    localStorage.setItem('skyhop-best',state.best);
+    localStorage.setItem('skyhop-coins',state.bestCoins);
+    finalScoreEl.textContent=state.score;
+    finalCoinsEl.textContent=state.coins;
+    bestEl.textContent=state.best;
+    gameOverEl.classList.add('show');
+  }
+
+  function updateHud(){
+    scoreEl.textContent=state.score;
+    bestEl.textContent=state.best;
+    coinsEl.textContent=state.coins;
+  }
+
+  function drawBackground(){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+    for(const s of stars){
+      const y=(s.y+state.worldOffset*s.speed)%H;
+      ctx.globalAlpha=s.a;
+      ctx.fillStyle='#fff';
+      ctx.beginPath();
+      ctx.arc(s.x,y,s.r,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  function roundedRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  function drawPlatforms(){
+    for(const p of platforms){
+      const g=ctx.createLinearGradient(p.x,p.y,p.x,p.y+p.h);
+      g.addColorStop(0,'#c2c8cf');
+      g.addColorStop(.5,'#8f98a4');
+      g.addColorStop(1,'#6f7782');
+      ctx.shadowColor='rgba(255,255,255,.06)';
+      ctx.shadowBlur=10; ctx.shadowOffsetY=3;
+      ctx.fillStyle=g;
+      roundedRect(p.x,p.y,p.w,p.h,6);
+      ctx.fill();
+      ctx.shadowColor='transparent';
+      ctx.fillStyle='rgba(255,255,255,.25)';
+      roundedRect(p.x+5,p.y+2,p.w-10,2.2,2);
+      ctx.fill();
+      if(p.type==='moving'){
+        ctx.strokeStyle='rgba(255,255,255,.14)';
+        ctx.lineWidth=1;
+        roundedRect(p.x,p.y,p.w,p.h,6);
+        ctx.stroke();
+      }
+      if(p.coin&&!p.collected) drawCoin(p.x+p.w/2,p.y-14);
+    }
+  }
+
+  function drawCoin(x,y){
+    const pulse=1+Math.sin(performance.now()/180)*0.18;
+    ctx.save();
+    ctx.shadowColor='rgba(255,255,255,.95)';
+    ctx.shadowBlur=16*pulse;
+    ctx.globalAlpha=.95;
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(x,y,6.4*pulse,0,Math.PI*2); ctx.fill();
+    ctx.shadowBlur=30*pulse;
+    ctx.globalAlpha=.23;
+    ctx.beginPath(); ctx.arc(x,y,11.5*pulse,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha=1;
+  }
+
+  function drawPlayer(){
+    const cx=player.x+player.w/2, cy=player.y+player.h/2;
+    const sy=1-player.squash*.12, sx=1+player.squash*.1;
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.scale(sx,sy);
+    const rot=clamp(player.vx/700,-0.22,0.22);
+    ctx.rotate(rot);
+    ctx.shadowColor='rgba(255,255,255,.16)';
+    ctx.shadowBlur=12;
+    ctx.drawImage(playerImage,-player.w/2,-player.h/2,player.w,player.h);
+    ctx.restore();
+  }
+
+  function drawParticles(){
+    for(const q of particles){
+      ctx.globalAlpha=Math.max(0,q.life*2);
+      ctx.fillStyle=q.coin?'#fff':'rgba(255,255,255,.75)';
+      if(q.coin){ctx.shadowColor='rgba(255,255,255,.85)';ctx.shadowBlur=10}
+      ctx.beginPath(); ctx.arc(q.x,q.y,q.r,0,Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+    }
+    ctx.globalAlpha=1;
+  }
+
+  function draw(){
+    drawBackground();
+    drawPlatforms();
+    drawParticles();
+    drawPlayer();
+  }
+
+  function loop(ts){
+    const dt=Math.min(.025,(ts-last)/1000||0);
+    last=ts;
+    update(dt*state.speedScale);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function setKey(e,on){
+    const k=e.key.toLowerCase();
+    if(['arrowleft','a'].includes(k)){keys.left=on;e.preventDefault()}
+    if(['arrowright','d'].includes(k)){keys.right=on;e.preventDefault()}
+    if(!running && on && [' ','enter'].includes(k)) reset();
+  }
+
+  addEventListener('keydown',e=>setKey(e,true),{passive:false});
+  addEventListener('keyup',e=>setKey(e,false),{passive:false});
+  addEventListener('resize',()=>{resize(); if(running) reset();});
+
+  function bindHold(id,side){
+    const el=document.getElementById(id);
+    const on=e=>{e.preventDefault(); touch[side]=true};
+    const off=e=>{e.preventDefault(); touch[side]=false};
+    el.addEventListener('pointerdown',on,{passive:false});
+    el.addEventListener('pointerup',off,{passive:false});
+    el.addEventListener('pointercancel',off,{passive:false});
+    el.addEventListener('pointerleave',off,{passive:false});
+  }
+  bindHold('left','left');
+  bindHold('right','right');
+
+  canvas.addEventListener('pointerdown',e=>{ if(!running){reset();return} if(e.clientX<W/2) touch.left=true; else touch.right=true; });
+  canvas.addEventListener('pointerup',()=>{touch.left=false;touch.right=false});
+  canvas.addEventListener('pointercancel',()=>{touch.left=false;touch.right=false});
+  restartBtn.addEventListener('click',reset);
+
+  function attachGyro(){
+    if(!window.DeviceOrientationEvent){gyroState.textContent='unsupported'; return;}
+    function handler(e){
+      const g=typeof e.gamma==='number' ? e.gamma : 0;
+      gyro.tilt=clamp(g,-30,30);
+    }
+    const needPermission=typeof window.DeviceOrientationEvent.requestPermission==='function';
+    if(needPermission){
+      window.DeviceOrientationEvent.requestPermission().then(state=>{
+        if(state==='granted'){
+          window.addEventListener('deviceorientation',handler);
+          gyro.enabled=true; gyro.supported=true;
+          gyroState.textContent='on';
+          gyroBtn.textContent='Motion enabled';
+        } else {
+          gyroState.textContent='denied';
+        }
+      }).catch(()=>{ gyroState.textContent='error'; });
+    } else {
+      window.addEventListener('deviceorientation',handler);
+      gyro.enabled=true; gyro.supported=true;
+      gyroState.textContent='on';
+      gyroBtn.textContent='Motion enabled';
+    }
+  }
+
+  gyroBtn.addEventListener('click',attachGyro);
+  resize(); reset(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
