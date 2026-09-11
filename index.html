@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<title>likhoy artplay</title>
+<!-- desktop sprite fix v3.1 -->
+<style>
+:root{
+  --bg:#000;
+  --ink:#f4f4f4;
+  --soft:#aeb3c1;
+  --panel:rgba(9,10,14,.78);
+  --line:rgba(255,255,255,.12);
+  --bottom-ui:130px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#000;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{touch-action:none}
+#wrap{position:fixed;inset:0;display:grid;place-items:center}
+canvas{display:block;width:100vw;height:100vh;background:#000}
+
+.hud{
+  position:fixed;inset:0;pointer-events:none;
+  padding:max(16px,env(safe-area-inset-top)) 16px calc(var(--bottom-ui) + env(safe-area-inset-bottom)) 16px;
+  display:flex;flex-direction:column;justify-content:space-between;
+}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.leftCol,.rightCol{display:flex;flex-direction:column;gap:10px}
+
+.brand,.scorebox,.hint,.overlay-card,.gyro-box{
+  background:var(--panel);
+  border:1px solid var(--line);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  box-shadow:0 10px 30px rgba(0,0,0,.22);
+}
+
+.brand{
+  padding:10px 16px;border-radius:16px;
+  font-size:15px;font-weight:800;letter-spacing:-.02em;
+  text-transform:lowercase; width:max-content;
+}
+
+.scorebox{
+  padding:14px 16px;border-radius:22px;
+  text-align:right;min-width:168px;
+}
+.score{font-size:48px;line-height:.95;font-weight:900;letter-spacing:-.06em}
+.meta{font-size:12px;color:var(--soft);margin-top:8px;text-transform:uppercase;letter-spacing:.18em}
+
+.hint{
+  align-self:center;padding:10px 16px;border-radius:999px;
+  font-size:11px;color:#c0c5d3;
+}
+
+.gyro-box{
+  pointer-events:auto;
+  display:flex;align-items:center;gap:8px;
+  width:max-content;
+  padding:6px;border-radius:16px;
+}
+#gyroState{font-size:12px;color:#cbd1de;padding:0 4px 0 2px}
+.btn{
+  border:0;border-radius:11px;padding:8px 12px;
+  background:#f4f4f4;color:#0f1014;font-weight:800;font-size:11px;line-height:1;cursor:pointer;
+}
+.btn:disabled{opacity:.72}
+.btn:active,.main:active{transform:scale(.98)}
+
+.center{
+  position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;
+  padding:20px 20px calc(var(--bottom-ui) + env(safe-area-inset-bottom) + 24px);
+}
+.overlay-card{
+  pointer-events:auto;width:min(90vw,420px);padding:24px;border-radius:30px;text-align:center;
+  opacity:0;transform:translateY(12px) scale(.98);transition:.2s ease;visibility:hidden;
+}
+.overlay-card.show{opacity:1;transform:none;visibility:visible}
+.start-logo{width:88px;height:112px;display:block;margin:0 auto 14px;filter:drop-shadow(0 0 18px rgba(255,255,255,.18))}
+.start-title{font-size:26px;font-weight:800;letter-spacing:-.05em;margin:0 0 8px}
+.start-sub{font-size:12px;color:#b7bdca;margin:0 0 18px}
+.start-card{background:rgba(6,7,10,.84)}
+h1{font-size:56px;line-height:1; margin:0 0 14px;letter-spacing:-.06em}
+p{color:#b4b8c5;margin:0 0 18px;line-height:1.45;font-size:16px}
+button.main{
+  border:0;border-radius:18px;padding:16px 18px;width:100%;
+  font-weight:800;font-size:15px;background:#f4f4f4;color:#090a0d;cursor:pointer;
+}
+
+.touch-controls{
+  position:fixed;left:0;right:0;
+  bottom:calc(26px + env(safe-area-inset-bottom) + 56px);
+  display:flex;justify-content:space-between;align-items:center;
+  padding:0 22px;pointer-events:none;
+}
+.touch{
+  pointer-events:auto;width:108px;height:108px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.15);
+  background:radial-gradient(circle at 35% 28%, rgba(255,255,255,.22), rgba(255,255,255,.08) 36%, rgba(255,255,255,.04) 58%, rgba(255,255,255,.02) 100%);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  display:grid;place-items:center;font-size:58px;font-weight:600;color:#fff;
+  user-select:none;-webkit-user-select:none;
+  box-shadow:0 8px 28px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.16);
+}
+.touch.midHint{
+  pointer-events:none;width:auto;height:auto;border-radius:999px;
+  padding:14px 24px;font-size:11px;line-height:1;
+  background:rgba(9,10,14,.78); border:1px solid rgba(255,255,255,.12);
+  color:#c0c5d3; box-shadow:none;
+}
+@media (hover:hover) and (pointer:fine){
+  .touch-controls{display:none}
+}
+@media (max-width:700px){
+  :root{--bottom-ui:160px}
+  .scorebox{min-width:170px;padding:12px 16px}
+  .score{font-size:44px}
+  h1{font-size:44px}
+  .overlay-card{width:min(88vw,420px);padding:20px 20px 22px}
+  .touch{width:120px;height:120px;font-size:62px}
+}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
+
+<div class="hud">
+  <div class="top">
+    <div class="leftCol">
+      <div class="brand">likhoy artplay</div>
+      <div class="gyro-box">
+        <button class="btn" id="gyroBtn">Enable motion</button>
+        <span id="gyroState">off</span>
+      </div>
+    </div>
+    <div class="rightCol">
+      <div class="scorebox">
+        <div class="score" id="score">0</div>
+        <div class="meta">Best <span id="best">0</span></div>
+        <div class="meta">Coins <span id="coins">0</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="hint">← → / A D · touch · gyroscope</div>
+</div>
+
+<div class="center">
+  <div class="overlay-card start-card show" id="startScreen">
+    <img class="start-logo" alt="" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjU4IDI1IDk4IDEyNSI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTg0LjA5LDI5LjAxYzYuNTItNC41MiwxMy4xMi0uNSwxOC4xLDYuMTUsOS4xOCwxMi4zMiwxNS43MSwyOS42MywyMS45LDQ0Ljk1LDUuMDEsMTIuNzUsOC45MSwyNC4zMywxMS41NiwzNC44LDEuMTIsNC41NiwyLjgsMTEuMTksMy43MSwxNy4xNC45MSw2LjAzLDEuMDUsMTEuMzktLjkzLDE1LjI5LTIuNTEsNC4xOC02LjcsMS42Ni05LjM1LS43Ny00LjE1LTMuMDMtMTAuMDUtMTMuMDctMTYuNTQtMjMuODgtNi40Ny0xMC42NS0xMy41Mi0yMi4wNy0xOS41My0yNC4wMy03Ljk4LTIuNjItMTMuNDEsNS42MS0xOC45MSwxMy42OC03LjM2LDExLjMxLTE1LjU0LDI2LjkxLTIyLjEyLDMzLjMtMi40MSwyLjQzLTQuNTYsMy43LTYuMzEsMy45LTYuMTQtLjE2LTYuMzEtOC41Ni00Ljk5LTE3LjUxLjY5LTQuNTksMS44Mi05LjYsMi45NS0xNC4yNywxLjEzLTQuNjEsMi4yNi04Ljg3LDIuODMtMTAuNTYsMi44NS05Ljg2LDYuOTEtMjAuODYsMTEuNjItMzIuNjEsNi42LTE1LjY3LDE0LjctMzcuMzgsMjUuOTgtNDUuNTcuMDEsMCwuMDMtLjAyLjA0LS4wM1oiLz48L3N2Zz4=">
+    <div class="start-title">likhoy artplay</div>
+    <div class="start-sub">A / D · ← / → · tilt on mobile</div>
+    <button class="main" id="startBtn">Start</button>
+  </div>
+
+  <div class="overlay-card" id="gameOver">
+    <h1>Game over</h1>
+    <p>You climbed <b><span id="finalScore">0</span></b> points and collected <b><span id="finalCoins">0</span></b> coins.</p>
+    <button class="main" id="restart">Play again</button>
+  </div>
+</div>
+
+<div class="touch-controls"><div class="touch" id="left">←</div><div class="touch midHint">← → / A D · touch · gyroscope</div><div class="touch" id="right">→</div></div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const coinsEl = document.getElementById('coins');
+  const gameOverEl = document.getElementById('gameOver');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalCoinsEl = document.getElementById('finalCoins');
+  const restartBtn = document.getElementById('restart');
+  const gyroBtn = document.getElementById('gyroBtn');
+  const gyroState = document.getElementById('gyroState');
+  const startScreen = document.getElementById('startScreen');
+  const startBtn = document.getElementById('startBtn');
+
+  const playerImage = new Image();
+  let playerReady = false;
+  playerImage.onload = () => {
+    playerReady = true;
+    startBtn.disabled = false;
+    startBtn.textContent = 'Start';
+  };
+  playerImage.onerror = () => {
+    // Keep the game usable even if an image decoder fails.
+    playerReady = false;
+    startBtn.disabled = false;
+    startBtn.textContent = 'Start';
+  };
+  startBtn.disabled = true;
+  startBtn.textContent = 'Loading…';
+  playerImage.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjU4IDI1IDk4IDEyNSI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTg0LjA5LDI5LjAxYzYuNTItNC41MiwxMy4xMi0uNSwxOC4xLDYuMTUsOS4xOCwxMi4zMiwxNS43MSwyOS42MywyMS45LDQ0Ljk1LDUuMDEsMTIuNzUsOC45MSwyNC4zMywxMS41NiwzNC44LDEuMTIsNC41NiwyLjgsMTEuMTksMy43MSwxNy4xNC45MSw2LjAzLDEuMDUsMTEuMzktLjkzLDE1LjI5LTIuNTEsNC4xOC02LjcsMS42Ni05LjM1LS43Ny00LjE1LTMuMDMtMTAuMDUtMTMuMDctMTYuNTQtMjMuODgtNi40Ny0xMC42NS0xMy41Mi0yMi4wNy0xOS41My0yNC4wMy03Ljk4LTIuNjItMTMuNDEsNS42MS0xOC45MSwxMy42OC03LjM2LDExLjMxLTE1LjU0LDI2LjkxLTIyLjEyLDMzLjMtMi40MSwyLjQzLTQuNTYsMy43LTYuMzEsMy45LTYuMTQtLjE2LTYuMzEtOC41Ni00Ljk5LTE3LjUxLjY5LTQuNTksMS44Mi05LjYsMi45NS0xNC4yNywxLjEzLTQuNjEsMi4yNi04Ljg3LDIuODMtMTAuNTYsMi44NS05Ljg2LDYuOTEtMjAuODYsMTEuNjItMzIuNjEsNi42LTE1LjY3LDE0LjctMzcuMzgsMjUuOTgtNDUuNTcuMDEsMCwuMDMtLjAyLjA0LS4wM1oiLz48L3N2Zz4=';
+
+let W=0,H=0,DPR=1,last=0,running=false,started=false;
+  const keys={left:false,right:false};
+  const touch={left:false,right:false};
+  const gyro={enabled:false,tilt:0,supported:false};
+
+  let audioCtx = null;
+  let masterGain = null;
+  let audioUnlocked = false;
+
+  function ensureAudio(){
+    if(!audioCtx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(AC){
+        audioCtx = new AC();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.22;
+        masterGain.connect(audioCtx.destination);
+      }
+    }
+    if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function unlockAudio(){
+    ensureAudio();
+    if(!audioCtx || !masterGain || audioUnlocked) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(440, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.00012, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+    osc.connect(gain).connect(masterGain);
+    osc.start(t);
+    osc.stop(t + 0.05);
+    audioUnlocked = true;
+  }
+
+  function playTone(type, f1, f2, duration, volume, when=0){
+    ensureAudio();
+    if(!audioCtx || !masterGain) return;
+    const t = audioCtx.currentTime + when;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f1, t);
+    if(f2 !== null) osc.frequency.exponentialRampToValueAtTime(f2, t + duration);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(volume, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+    osc.connect(gain).connect(masterGain);
+    osc.start(t);
+    osc.stop(t + duration + 0.02);
+  }
+
+  function playJumpSound(){
+    if(!audioUnlocked) unlockAudio();
+    playTone('triangle', 180, 300, 0.16, 0.16, 0);
+    playTone('sine', 240, 190, 0.10, 0.06, 0);
+  }
+
+  function playCoinSound(){
+    if(!audioUnlocked) unlockAudio();
+    playTone('sine', 700, 980, 0.12, 0.10, 0);
+    playTone('sine', 980, 1280, 0.16, 0.08, 0.055);
+    playTone('triangle', 520, 760, 0.13, 0.05, 0);
+  }
+
+  const state={
+    score:0,
+    best:+(localStorage.getItem('skyhop-best')||0),
+    coins:0,
+    bestCoins:+(localStorage.getItem('skyhop-coins')||0),
+    speedScale:1,
+    worldOffset:0
+  };
+
+  const player={
+    x:0,y:0,w:39,h:50,vx:0,vy:0,
+    accel:1850,maxSpeed:290,friction:0.87,jump:820,squash:0
+  };
+
+  let platforms=[], particles=[], stars=[];
+
+  function rand(a,b){return a+Math.random()*(b-a)}
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+
+  function resize(){
+    DPR=Math.min(window.devicePixelRatio||1,2);
+    W=window.innerWidth; H=window.innerHeight;
+    canvas.width=Math.floor(W*DPR); canvas.height=Math.floor(H*DPR);
+    canvas.style.width=W+'px'; canvas.style.height=H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    createStars();
+  }
+
+  function createStars(){
+    stars=[];
+    const count=Math.round((W*H)/6500);
+    for(let i=0;i<count;i++){
+      stars.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.7+0.4,a:Math.random()*0.7+0.2,speed:Math.random()*0.28+0.12});
+    }
+  }
+
+  function reset(autoStart=false){
+    state.score=0; state.coins=0; state.speedScale=1; state.worldOffset=0;
+    gameOverEl.classList.remove('show');
+    platforms=[]; particles=[];
+
+    player.x=W/2-player.w/2;
+    player.y=H*0.68;
+    player.vx=0;
+    player.vy=0;
+
+    const start={x:W/2-62,y:H*0.82,w:124,h:14,type:'solid',coin:false,collected:false};
+    platforms.push(start);
+
+    let prev=start;
+    let y=start.y;
+    for(let i=0;i<16;i++){
+      y-=rand(68,102);
+      const next=makeReachablePlatform(prev,y,i);
+      platforms.push(next);
+      prev=next;
+    }
+
+    running=false;
+    started=false;
+    updateHud();
+
+    if(autoStart) startGame();
+  }
+
+  function startGame(){
+    if(started) return;
+    ensureAudio();
+    started=true;
+    running=true;
+    startScreen.classList.remove('show');
+    player.vy=-player.jump;
+    playJumpSound();
+  }
+
+  function makeReachablePlatform(prev,y,i=0){
+    const w=rand(82,126);
+    const maxDx=110;
+    const desiredX=prev.x+prev.w/2-w/2+rand(-maxDx,maxDx);
+    const x=clamp(desiredX,10,W-w-10);
+    const moving=i>6&&Math.random()<0.16;
+    return {
+      x,y,w,h:12,
+      type:moving?'moving':'solid',
+      dir:Math.random()<.5?-1:1,
+      speed:rand(26,48),
+      coin:Math.random()<0.33,
+      collected:false
+    };
+  }
+
+  function spawnReachableAbove(){
+    let highest=platforms.reduce((m,p)=>Math.min(m,p.y),Infinity);
+    while(highest>-160){
+      const highestPlatform=platforms.slice().sort((a,b)=>a.y-b.y)[0];
+      highest-=rand(68,100);
+      platforms.push(makeReachablePlatform(highestPlatform,highest,platforms.length));
+      highest=platforms.reduce((m,p)=>Math.min(m,p.y),Infinity);
+    }
+  }
+
+  function controlDir(){
+    let dir=0;
+    if(keys.left||touch.left) dir-=1;
+    if(keys.right||touch.right) dir+=1;
+    if(gyro.enabled&&Math.abs(gyro.tilt)>1.5) dir+=clamp(gyro.tilt/16,-1,1);
+    return clamp(dir,-1,1);
+  }
+
+  function update(dt){
+    if(!running) return;
+    const dir=controlDir();
+    if(Math.abs(dir)>0.01){
+      player.vx+=dir*player.accel*dt;
+      player.vx=clamp(player.vx,-player.maxSpeed,player.maxSpeed);
+    } else {
+      player.vx*=Math.pow(player.friction,dt*60);
+    }
+
+    const prevY=player.y;
+    player.vy+=1850*dt;
+    player.y+=player.vy*dt;
+    player.x+=player.vx*dt;
+
+    if(player.x>W) player.x=-player.w;
+    if(player.x+player.w<0) player.x=W;
+
+    for(const p of platforms){
+      if(p.type==='moving'){
+        p.x+=p.dir*p.speed*dt;
+        if(p.x<8){p.x=8;p.dir=1}
+        if(p.x+p.w>W-8){p.x=W-8-p.w;p.dir=-1}
+      }
+    }
+
+    if(player.vy>0){
+      const prevBottom=prevY+player.h;
+      const bottom=player.y+player.h;
+      for(const p of platforms){
+        if(prevBottom<=p.y+5 && bottom>=p.y && player.x+player.w>p.x+4 && player.x<p.x+p.w-4){
+          player.y=p.y-player.h;
+          player.vy=-player.jump*(1+Math.min(.12,state.score/4500));
+          player.squash=1;
+          playJumpSound();
+          burst(player.x+player.w/2,p.y,false);
+          break;
+        }
+      }
+    }
+
+    const px=player.x+player.w/2;
+    const py=player.y+player.h/2;
+    for(const p of platforms){
+      if(p.coin&&!p.collected){
+        const cx=p.x+p.w/2, cy=p.y-14;
+        const dx=px-cx, dy=py-cy;
+        if(dx*dx+dy*dy<24*24){
+          p.collected=true;
+          state.coins+=1;
+          state.score+=25;
+          playCoinSound();
+          burst(cx,cy,true);
+        }
+      }
+    }
+
+    const threshold=H*0.42;
+    if(player.y<threshold && player.vy<0){
+      const dy=threshold-player.y;
+      player.y=threshold;
+      for(const p of platforms) p.y+=dy;
+      for(const q of particles) q.y+=dy;
+      state.score+=Math.floor(dy);
+      state.worldOffset+=dy;
+      state.speedScale=1+Math.min(.28,state.score/8000);
+    }
+
+    spawnReachableAbove();
+    platforms=platforms.filter(p=>p.y<H+90);
+
+    for(const q of particles){
+      q.x+=q.vx*dt; q.y+=q.vy*dt; q.vy+=650*dt; q.life-=dt;
+    }
+    particles=particles.filter(q=>q.life>0);
+
+    player.squash=Math.max(0,player.squash-dt*6);
+
+    if(player.y>H+90) endGame();
+    updateHud();
+  }
+
+  function burst(x,y,coin=false){
+    const count=coin?14:8;
+    for(let i=0;i<count;i++){
+      particles.push({x,y,vx:rand(-100,100),vy:rand(-160,-40),life:rand(.26,.58),r:coin?rand(1.8,4.6):rand(1.6,3.2),coin});
+    }
+  }
+
+  function endGame(){
+    running=false;
+    state.best=Math.max(state.best,state.score);
+    state.bestCoins=Math.max(state.bestCoins,state.coins);
+    localStorage.setItem('skyhop-best',state.best);
+    localStorage.setItem('skyhop-coins',state.bestCoins);
+    finalScoreEl.textContent=state.score;
+    finalCoinsEl.textContent=state.coins;
+    bestEl.textContent=state.best;
+    gameOverEl.classList.add('show');
+  }
+
+  function updateHud(){
+    scoreEl.textContent=state.score;
+    bestEl.textContent=state.best;
+    coinsEl.textContent=state.coins;
+  }
+
+  function drawBackground(){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+    for(const s of stars){
+      const y=(s.y+state.worldOffset*s.speed)%H;
+      ctx.globalAlpha=s.a;
+      ctx.fillStyle='#fff';
+      ctx.beginPath();
+      ctx.arc(s.x,y,s.r,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  function roundedRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  function drawPlatforms(){
+    for(const p of platforms){
+      const g=ctx.createLinearGradient(p.x,p.y,p.x,p.y+p.h);
+      g.addColorStop(0,'#c2c8cf');
+      g.addColorStop(.5,'#8f98a4');
+      g.addColorStop(1,'#6f7782');
+      ctx.shadowColor='rgba(255,255,255,.06)';
+      ctx.shadowBlur=10; ctx.shadowOffsetY=3;
+      ctx.fillStyle=g;
+      roundedRect(p.x,p.y,p.w,p.h,6);
+      ctx.fill();
+      ctx.shadowColor='transparent';
+      ctx.fillStyle='rgba(255,255,255,.25)';
+      roundedRect(p.x+5,p.y+2,p.w-10,2.2,2);
+      ctx.fill();
+      if(p.type==='moving'){
+        ctx.strokeStyle='rgba(255,255,255,.14)';
+        ctx.lineWidth=1;
+        roundedRect(p.x,p.y,p.w,p.h,6);
+        ctx.stroke();
+      }
+      if(p.coin&&!p.collected) drawCoin(p.x+p.w/2,p.y-14);
+    }
+  }
+
+  function drawCoin(x,y){
+    const pulse=1+Math.sin(performance.now()/180)*0.18;
+    ctx.save();
+    ctx.shadowColor='rgba(255,255,255,.95)';
+    ctx.shadowBlur=16*pulse;
+    ctx.globalAlpha=.95;
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(x,y,6.4*pulse,0,Math.PI*2); ctx.fill();
+    ctx.shadowBlur=30*pulse;
+    ctx.globalAlpha=.23;
+    ctx.beginPath(); ctx.arc(x,y,11.5*pulse,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha=1;
+  }
+
+  function drawPlayer(){
+    const cx=player.x+player.w/2;
+    const cy=player.y+player.h/2;
+    const targetH=68;
+    const targetW=targetH*(98/125);
+
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(clamp(player.vx/2000,-0.05,0.05));
+    ctx.globalCompositeOperation='source-over';
+
+    if(playerReady){
+      ctx.shadowColor='rgba(255,255,255,.20)';
+      ctx.shadowBlur=10;
+      ctx.drawImage(playerImage,-targetW/2,-targetH/2,targetW,targetH);
+    }else{
+      ctx.fillStyle='#fff';
+      ctx.shadowColor='rgba(255,255,255,.22)';
+      ctx.shadowBlur=10;
+      ctx.beginPath();
+      ctx.moveTo(0,-targetH/2);
+      ctx.bezierCurveTo(targetW*.23,-targetH*.48,targetW*.44,-targetH*.08,targetW*.50,targetH*.28);
+      ctx.bezierCurveTo(targetW*.54,targetH*.54,targetW*.32,targetH*.48,targetW*.12,targetH*.12);
+      ctx.bezierCurveTo(0,-targetH*.06,-targetW*.10,targetH*.04,-targetW*.22,targetH*.28);
+      ctx.bezierCurveTo(-targetW*.45,targetH*.67,-targetW*.58,targetH*.45,-targetW*.46,targetH*.12);
+      ctx.bezierCurveTo(-targetW*.31,-targetH*.31,-targetW*.13,-targetH*.53,0,-targetH/2);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawParticles(){
+    for(const q of particles){
+      ctx.globalAlpha=Math.max(0,q.life*2);
+      ctx.fillStyle=q.coin?'#fff':'rgba(255,255,255,.75)';
+      if(q.coin){ctx.shadowColor='rgba(255,255,255,.85)';ctx.shadowBlur=10}
+      ctx.beginPath(); ctx.arc(q.x,q.y,q.r,0,Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+    }
+    ctx.globalAlpha=1;
+  }
+
+  function draw(){
+    drawBackground();
+    drawPlatforms();
+    drawParticles();
+    drawPlayer();
+  }
+
+  function loop(ts){
+    const dt=Math.min(.025,(ts-last)/1000||0);
+    last=ts;
+    update((dt/1.5)*state.speedScale);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function setKey(e,on){ if(on) unlockAudio();
+    const k=e.key.toLowerCase();
+    if(['arrowleft','a'].includes(k)){keys.left=on;e.preventDefault()}
+    if(['arrowright','d'].includes(k)){keys.right=on;e.preventDefault()}
+    if(!started && on && [' ','enter'].includes(k)) startGame();
+    else if(!running && started && on && [' ','enter'].includes(k)) reset(true);
+  }
+
+  addEventListener('keydown',e=>setKey(e,true),{passive:false});
+  addEventListener('keyup',e=>setKey(e,false),{passive:false});
+  addEventListener('resize',()=>{ const wasRunning=running; resize(); reset(wasRunning); });
+
+  function bindHold(id,side){
+    const el=document.getElementById(id);
+    const on=e=>{e.preventDefault(); touch[side]=true};
+    const off=e=>{e.preventDefault(); touch[side]=false};
+    el.addEventListener('pointerdown',on,{passive:false});
+    el.addEventListener('pointerup',off,{passive:false});
+    el.addEventListener('pointercancel',off,{passive:false});
+    el.addEventListener('pointerleave',off,{passive:false});
+  }
+  bindHold('left','left');
+  bindHold('right','right');
+
+  canvas.addEventListener('pointerdown',e=>{ unlockAudio(); if(!running) return; if(e.clientX<W/2) touch.left=true; else touch.right=true; });
+  canvas.addEventListener('pointerup',()=>{touch.left=false;touch.right=false});
+  canvas.addEventListener('pointercancel',()=>{touch.left=false;touch.right=false});
+  restartBtn.addEventListener('click',()=>{ unlockAudio(); reset(true); });
+  startBtn.addEventListener('click',()=>{ unlockAudio(); startGame(); });
+
+  function attachGyro(){
+    if(!window.DeviceOrientationEvent){gyroState.textContent='unsupported'; return;}
+    function handler(e){
+      const g=typeof e.gamma==='number' ? e.gamma : 0;
+      gyro.tilt=clamp(g,-30,30);
+    }
+    const needPermission=typeof window.DeviceOrientationEvent.requestPermission==='function';
+    if(needPermission){
+      window.DeviceOrientationEvent.requestPermission().then(state=>{
+        if(state==='granted'){
+          window.addEventListener('deviceorientation',handler);
+          gyro.enabled=true; gyro.supported=true;
+          gyroState.textContent='on';
+          gyroBtn.textContent='Motion enabled';
+        } else {
+          gyroState.textContent='denied';
+        }
+      }).catch(()=>{ gyroState.textContent='error'; });
+    } else {
+      window.addEventListener('deviceorientation',handler);
+      gyro.enabled=true; gyro.supported=true;
+      gyroState.textContent='on';
+      gyroBtn.textContent='Motion enabled';
+    }
+  }
+
+  gyroBtn.addEventListener('click',()=>{ unlockAudio(); attachGyro(); });
+  resize(); reset(false); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
